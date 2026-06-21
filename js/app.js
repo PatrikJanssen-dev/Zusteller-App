@@ -544,9 +544,9 @@ lines.forEach(block => {
         streetMatch[2].trim();
 
         const numberMatches =
-        [...block.matchAll(
-            /(?:TA\s+)?(?:-B\s+)?(\d+\s?[A-Z]?)(?=\s+\d{7})/g
-        )];
+[...block.matchAll(
+    /(TA|-B)?\s*(\d+\s?[A-Z]?)(?=\s+\d{7})/g
+)];
 
         numberMatches.forEach(num => {
 
@@ -560,18 +560,23 @@ addresses.some(a =>
 );
 
 if(!exists){
+const routeTag =
+(num[1] || "").trim();
 
+const hausnummer =
+num[2].trim();
     importedAddresses.push({
 
-        city: currentCity,
-        street: currentStreet,
-        number: num[1].trim(),
-        note: "PDF Import",
-        done: false,
-        lat: null,
-        lon: null
+    city: currentCity,
+    street: currentStreet,
+    number: hausnummer,
+    routeTag: routeTag,
+    note: "PDF Import",
+    done: false,
+    lat: null,
+    lon: null
 
-    });
+});
 
 }else{
 
@@ -610,7 +615,15 @@ console.log(fullText);
 
     reader.readAsArrayBuffer(file);
 }
+function showMissingAddresses(){
 
+    const missing =
+    addresses.filter(
+        a => !a.lat || !a.lon
+    );
+
+    console.table(missing);
+}
 async function geocodeImportedAddresses(importedAddresses){
 
     let success = 0;
@@ -732,7 +745,13 @@ ${city}
         html += `
         <div class="${a.done ? 'done' : ''}">
 
-            <b>${a.street} ${a.number}</b><br>
+            <b>${a.street} ${a.number}</b>
+
+${a.routeTag ?
+` <span style="color:red">[${a.routeTag}]</span>`
+: ""}
+
+<br>
 
             ${a.note}<br><br>
 
@@ -763,5 +782,6 @@ ${city}
 
         app.innerHTML += html;
     });
+
 }
 render();
