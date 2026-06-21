@@ -4,7 +4,136 @@ let collapsed =
 JSON.parse(
     localStorage.getItem("collapsedCities")
 ) || {};
+let map = null;
+let markers = [];
+let markerObjects = [];
 
+const redIcon = new L.Icon({
+    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+const greenIcon = new L.Icon({
+    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+function showMap(){
+
+    const mapDiv =
+    document.getElementById("map");
+
+    mapDiv.style.display = "block";
+
+    if(map){
+        return;
+    }
+
+    map = L.map("map")
+    .setView([53.647,7.612],11);
+
+    L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+        attribution:
+        "&copy; OpenStreetMap"
+    }).addTo(map);
+    updateMapMarkers();
+}
+function toggleMap(){
+
+    const mapDiv =
+    document.getElementById("map");
+
+    if(mapDiv.style.display === "none" ||
+       mapDiv.style.display === ""){
+
+        showMap();
+
+    }else{
+
+        mapDiv.style.display = "none";
+    }
+}
+async function geocodeAddress(address){
+
+    const url =
+    "https://nominatim.openstreetmap.org/search?format=json&q="
+    + encodeURIComponent(address);
+
+    const response = await fetch(url);
+
+    const data = await response.json();
+
+    if(data.length > 0){
+
+        return {
+            lat: parseFloat(data[0].lat),
+            lon: parseFloat(data[0].lon)
+        };
+    }
+
+    return null;
+}
+
+function updateMapMarkers(){
+
+    if(!map) return;
+
+    markers.forEach(marker => {
+        map.removeLayer(marker);
+    });
+
+    markers = [];
+markerObjects = [];
+    addresses.forEach(a => {
+
+        if(a.lat && a.lon){
+
+            const marker =
+L.marker(
+    [a.lat,a.lon],
+    {
+        icon: a.done ? greenIcon : redIcon
+    }
+)
+            .addTo(map)
+            .bindPopup(
+`
+<b>${a.street} ${a.number}</b><br>
+${a.city}<br><br>
+
+<button onclick="navigateTo(${addresses.indexOf(a)})">
+🧭 Navigation
+</button>
+
+<button onclick="toggleDone(${addresses.indexOf(a)})">
+${a.done ? "↩️ Offen" : "✅ Erledigt"}
+</button>
+`
+);
+
+            markers.push(marker);markerObjects.push({
+    marker: marker,
+    address: a
+});
+        }
+    });
+
+    if(markers.length > 0){
+
+        const group =
+        L.featureGroup(markers);
+
+        map.fitBounds(
+            group.getBounds(),
+            { padding:[20,20] }
+        );
+    }
+}
 function save(){
     localStorage.setItem(
         "zustellerData",
@@ -18,7 +147,7 @@ function saveCollapsed(){
         JSON.stringify(collapsed)
     );
 }
-function addAddress(){
+async function addAddress(){
 
     const city =
     document.getElementById("cityInput").value.trim();
@@ -38,16 +167,36 @@ function addAddress(){
     }
 
     addresses.push({
-        city,
-        street,
-        number,
-        note,
-        done:false
-    });
+    city,
+    street,
+    number,
+    note,
+    done:false,
+    lat:null,
+    lon:null
+});
+const newAddress =
+addresses[addresses.length - 1];
 
+const result =
+await geocodeAddress(
+
+    newAddress.street + " " +
+    newAddress.number + ", " +
+    newAddress.city +
+    ", Niedersachsen, Deutschland"
+
+);
+console.log(result);
+if(result){
+
+    newAddress.lat = result.lat;
+    newAddress.lon = result.lon;
+}
+console.log(newAddress);
     save();
     render();
-
+updateMapMarkers();
     document.getElementById("cityInput").value="";
     document.getElementById("streetInput").value="";
     document.getElementById("numberInput").value="";
@@ -61,6 +210,7 @@ function toggleDone(index){
 
     save();
     render();
+    updateMapMarkers();
 }
 
 function deleteAddress(index){
@@ -71,6 +221,7 @@ function deleteAddress(index){
 
         save();
         render();
+        updateMapMarkers();
     }
 }
 
@@ -174,6 +325,35 @@ function nextOpenAddress(){
         encodeURIComponent(ziel),
         "_blank"
     );
+}
+
+function showNextOpenAddress(){
+
+    const next =
+    addresses.find(a => !a.done);
+
+    if(!next){
+
+        alert("🎉 Alle Adressen erledigt!");
+        return;
+    }
+
+    showMap();
+
+    const markerData =
+    markerObjects.find(
+        m => m.address === next
+    );
+
+    if(markerData){
+
+        map.setView(
+            [next.lat, next.lon],
+            18
+        );
+
+        markerData.marker.openPopup();
+    }
 }
 function exportData(){
 
@@ -280,6 +460,96 @@ function sortByStreet(){
 
     save();
     render();
+}
+async function importPdf(){
+
+    const file =
+    document.getElementById("pdfFile").files[0];
+
+    if(!file){
+
+        alert("Bitte zuerst eine PDF auswählen.");
+        return;
+    }
+
+    const reader =
+    new FileReader();
+
+    reader.onload = async function(){
+
+        const typedArray =
+        new Uint8Array(reader.result);
+
+        const pdf =
+        await pdfjsLib.getDocument({
+            data: typedArray
+        }).promise;
+
+        let fullText = "";
+
+        for(
+            let pageNum = 1;
+            pageNum <= pdf.numPages;
+            pageNum++
+        ){
+
+            const page =
+            await pdf.getPage(pageNum);
+
+            const textContent =
+            await page.getTextContent();
+
+            const pageText =
+            textContent.items
+            .map(item => item.str)
+            .join(" ");
+
+            fullText += pageText + "\n";
+        }
+
+       const matches =
+fullText.match(
+    /([A-Za-zÄÖÜäöüß\s\-]+),\s+([A-Za-zÄÖÜäöüß\s\-]+)\s+(\d+)/g
+);
+matches.forEach(entry => {
+
+    const clean =
+    entry.replace(/\s+/g, " ").trim();
+
+    const match =
+    clean.match(
+        /(.*),\s(.*)\s(\d+)$/
+    );
+
+    if(match){
+
+        addresses.push({
+            city: match[2],
+            street: match[1],
+            number: match[3],
+            note: "PDF Import",
+            done: false,
+            lat: null,
+            lon: null
+        });
+    }
+});
+
+save();
+render();
+
+alert(
+    matches.length +
+    " Adressen importiert"
+);
+console.log(matches);
+
+        alert(
+            "PDF erfolgreich gelesen. Öffne F12 → Konsole."
+        );
+    };
+
+    reader.readAsArrayBuffer(file);
 }
 function render(){
 

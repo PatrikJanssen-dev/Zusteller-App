@@ -6,7 +6,8 @@
 <title>Zusteller-App</title>
 
 <link rel="stylesheet" href="css/style.css">
-
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
 
@@ -31,7 +32,19 @@
 <div class="progress">
     <div id="bar" class="bar"></div>
 </div>
-<button onclick="nextOpenAddress()">
+<button onclick="toggleMap()">
+🗺️ Karte
+</button>
+
+<div id="map"
+style="
+height:400px;
+margin-top:10px;
+display:none;
+border-radius:10px;
+">
+</div>
+<button onclick="showNextOpenAddress()">
 🚚 Nächste offene Adresse
 </button>
 <button onclick="exportData()">
@@ -40,6 +53,14 @@
 
 <button onclick="document.getElementById('importFile').click()">
 📥 Importieren
+</button>
+<input
+type="file"
+id="pdfFile"
+accept=".pdf">
+
+<button onclick="importPdf()">
+📄 Zustellbuch importieren
 </button>
 <button onclick="sortByCity()">
 🏘️ Nach Ort sortieren
@@ -55,7 +76,8 @@ accept=".json"
 style="display:none"
 onchange="importData(event)">
 <div id="app"></div>
-
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="js/app.js"></script>
 
 </body>
