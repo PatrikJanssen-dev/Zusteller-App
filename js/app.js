@@ -7,7 +7,7 @@ JSON.parse(
 let map = null;
 let markers = [];
 let markerObjects = [];
-
+let duplicateCount = 0;
 const redIcon = new L.Icon({
     iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
     shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
@@ -132,6 +132,14 @@ ${a.done ? "↩️ Offen" : "✅ Erledigt"}
             group.getBounds(),
             { padding:[20,20] }
         );
+    }
+}
+function resetData(){
+
+    if(confirm("Wirklich alle Daten löschen?")){
+
+        localStorage.clear();
+        location.reload();
     }
 }
 function save(){
@@ -507,42 +515,93 @@ async function importPdf(){
             fullText += pageText + "\n";
         }
 
-       const matches =
-fullText.match(
-    /([A-Za-zÄÖÜäöüß\s\-]+),\s+([A-Za-zÄÖÜäöüß\s\-]+)\s+(\d+)/g
-);
-matches.forEach(entry => {
+      
+const importedAddresses = [];
 
-    const clean =
-    entry.replace(/\s+/g, " ").trim();
+const lines =
+fullText
+.replace(/\s+/g, " ")
+.split("______________________________________________________________________________");
 
-    const match =
-    clean.match(
-        /(.*),\s(.*)\s(\d+)$/
+let currentStreet = "";
+let currentCity = "";
+
+lines.forEach(block => {
+
+    block = block.trim();
+
+    const streetMatch =
+    block.match(
+        /^([A-Za-zÄÖÜäöüß0-9\-\.\s]+),\s*([A-Za-zÄÖÜäöüß\-\s]+)/
     );
 
-    if(match){
+    if(streetMatch){
 
-        addresses.push({
-            city: match[2],
-            street: match[1],
-            number: match[3],
-            note: "PDF Import",
-            done: false,
-            lat: null,
-            lon: null
+        currentStreet =
+        streetMatch[1].trim();
+
+        currentCity =
+        streetMatch[2].trim();
+
+        const numberMatches =
+        [...block.matchAll(
+            /(?:TA\s+)?(?:-B\s+)?(\d+\s?[A-Z]?)(?=\s+\d{7})/g
+        )];
+
+        numberMatches.forEach(num => {
+
+            const exists =
+addresses.some(a =>
+
+    a.city === currentCity &&
+    a.street === currentStreet &&
+    a.number === num[1].trim()
+
+);
+
+if(!exists){
+
+    importedAddresses.push({
+
+        city: currentCity,
+        street: currentStreet,
+        number: num[1].trim(),
+        note: "PDF Import",
+        done: false,
+        lat: null,
+        lon: null
+
+    });
+
+}else{
+
+    duplicateCount++;
+}
+
         });
     }
+
 });
+
+addresses.push(...importedAddresses);
 
 save();
 render();
 
 alert(
-    matches.length +
-    " Adressen importiert"
+    importedAddresses.length +
+    " neue Adressen importiert\n\n" +
+    duplicateCount +
+    " Duplikate übersprungen\n\n" +
+    "Koordinaten werden jetzt geladen..."
 );
-console.log(matches);
+
+await geocodeImportedAddresses(
+    importedAddresses
+);
+
+console.log(importedAddresses);
+console.log(fullText);
 
         alert(
             "PDF erfolgreich gelesen. Öffne F12 → Konsole."
@@ -551,6 +610,57 @@ console.log(matches);
 
     reader.readAsArrayBuffer(file);
 }
+
+async function geocodeImportedAddresses(importedAddresses){
+
+    let success = 0;
+
+    for(const a of importedAddresses){
+
+        try{
+
+            const result =
+            await geocodeAddress(
+
+                a.street + " " +
+                a.number + ", " +
+                a.city +
+                ", Niedersachsen, Deutschland"
+
+            );
+
+            if(result){
+
+                a.lat = result.lat;
+                a.lon = result.lon;
+
+                success++;
+            }
+
+        }catch(error){
+
+            console.log(
+                "Geocoding Fehler:",
+                a.street,
+                error
+            );
+        }
+
+        await new Promise(
+            resolve => setTimeout(resolve, 1000)
+        );
+    }
+
+    save();
+
+    updateMapMarkers();
+
+    alert(
+        success +
+        " Koordinaten erfolgreich geladen."
+    );
+}
+
 function render(){
 
     const search =
